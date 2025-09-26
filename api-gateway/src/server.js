@@ -19,12 +19,12 @@ const redisClient = new Redis(process.env.REDIS_URL);
 
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+// app.use(express.json());
 
 //rate limiting
 const ratelimitOptions = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
@@ -58,6 +58,60 @@ const proxyOptions = {
   },
 };
 
+//đặt ở đây để có thể nhận file thay vì json
+// route không cần xác thực
+app.use(
+  ["/v1/jobs", "/v1/jobs/:slug", "/v1/jobs/category/:categoryName"],
+  (req, res, next) => {
+    if (req.method === "GET") {
+      next();
+    } else {
+      validateToken(req, res, next);
+    }
+  },
+  proxy(process.env.JOB_SERVICE_URL, {
+    ...proxyOptions,
+    proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
+      // proxyReqOpts.headers["Content-Type"] = "application/json";
+      if (srcReq.user) {
+        proxyReqOpts.headers["x-user-id"] = srcReq.user.userId;
+      }
+      return proxyReqOpts;
+    },
+    userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
+      logger.info(`Response received from Job service: ${proxyRes.statusCode}`);
+      return proxyResData;
+    },
+  })
+);
+
+app.use(
+  ["/v1/user/upload-resume"],
+  (req, res, next) => {
+    if (req.method === "GET") {
+      next();
+    } else {
+      validateToken(req, res, next);
+    }
+  },
+  proxy(process.env.IDENTIFY_SERVICE_URL, {
+    ...proxyOptions,
+    proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
+      // proxyReqOpts.headers["Content-Type"] = "application/json";
+      if (srcReq.user) {
+        proxyReqOpts.headers["x-user-id"] = srcReq.user.userId;
+      }
+      return proxyReqOpts;
+    },
+    userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
+      logger.info(`Response received from Identify service: ${proxyRes.statusCode}`);
+      return proxyResData;
+    },
+  })
+);
+
+app.use(express.json());
+
 //setting up proxy for indentify service
 app.use(
   "/v1/auth/",
@@ -68,15 +122,34 @@ app.use(
       return proxyReqOpts;
     },
     userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
-      logger.info(
-        `Response received from Indentify service: ${proxyRes.statusCode}`
-      );
+      logger.info(`Response received from Indentify service: ${proxyRes.statusCode}`);
 
       return proxyResData;
     },
   })
 );
 
+//setting up proxy for user service
+app.use(
+  "/v1/user",
+  validateToken,
+  proxy(process.env.IDENTIFY_SERVICE_URL, {
+    ...proxyOptions,
+    proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
+      proxyReqOpts.headers["Content-Type"] = "application/json";
+      proxyReqOpts.headers["x-user-id"] = srcReq.user.userId;
+
+      return proxyReqOpts;
+    },
+    userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
+      logger.info(`Response received from Identify service: ${proxyRes.statusCode}`);
+
+      return proxyResData;
+    },
+  })
+);
+
+// For other job routes that need authentication
 app.use(
   "/v1/jobs",
   validateToken,
@@ -85,14 +158,46 @@ app.use(
     proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
       proxyReqOpts.headers["Content-Type"] = "application/json";
       proxyReqOpts.headers["x-user-id"] = srcReq.user.userId;
-
       return proxyReqOpts;
     },
     userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
-      logger.info(
-        `Response received from Post service: ${proxyRes.statusCode}`
-      );
+      logger.info(`Response received from Job service: ${proxyRes.statusCode}`);
+      return proxyResData;
+    },
+  })
+);
 
+//application routes in job service
+app.use(
+  "/v1/applications",
+  validateToken,
+  proxy(process.env.JOB_SERVICE_URL, {
+    ...proxyOptions,
+    proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
+      proxyReqOpts.headers["Content-Type"] = "application/json";
+      proxyReqOpts.headers["x-user-id"] = srcReq.user.userId;
+      return proxyReqOpts;
+    },
+    userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
+      logger.info(`Response received from application service: ${proxyRes.statusCode}`);
+      return proxyResData;
+    },
+  })
+);
+
+//saved jobs
+app.use(
+  "/v1/saved-jobs",
+  validateToken,
+  proxy(process.env.JOB_SERVICE_URL, {
+    ...proxyOptions,
+    proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
+      proxyReqOpts.headers["Content-Type"] = "application/json";
+      proxyReqOpts.headers["x-user-id"] = srcReq.user.userId;
+      return proxyReqOpts;
+    },
+    userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
+      logger.info(`Response received from saved jobs service: ${proxyRes.statusCode}`);
       return proxyResData;
     },
   })
@@ -100,19 +205,17 @@ app.use(
 
 app.use(
   "/v1/search",
-  validateToken,
+  //validateToken,
   proxy(process.env.SEARCH_SERVICE_URL, {
     ...proxyOptions,
     proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
       proxyReqOpts.headers["Content-Type"] = "application/json";
-      proxyReqOpts.headers["x-user-id"] = srcReq.user.userId;
+      //proxyReqOpts.headers["x-user-id"] = srcReq.user.userId;
 
       return proxyReqOpts;
     },
     userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
-      logger.info(
-        `Response received from Search service: ${proxyRes.statusCode}`
-      );
+      logger.info(`Response received from Search service: ${proxyRes.statusCode}`);
 
       return proxyResData;
     },
@@ -131,9 +234,35 @@ app.use(
       return proxyReqOpts;
     },
     userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
-      logger.info(
-        `Response received from Search service: ${proxyRes.statusCode}`
-      );
+      logger.info(`Response received from Search service: ${proxyRes.statusCode}`);
+
+      return proxyResData;
+    },
+  })
+);
+
+app.use(
+  ["/v1/company"],
+  (req, res, next) => {
+    if (req.method === "GET") {
+      next();
+    } else {
+      validateToken(req, res, next);
+    }
+  },
+  // validateToken,
+  proxy(process.env.COMPANY_SERVICE_URL, {
+    ...proxyOptions,
+    proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
+      proxyReqOpts.headers["Content-Type"] = "application/json";
+      if (srcReq.user) {
+        proxyReqOpts.headers["x-user-id"] = srcReq.user.userId;
+      }
+
+      return proxyReqOpts;
+    },
+    userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
+      logger.info(`Response received from Company service: ${proxyRes.statusCode}`);
 
       return proxyResData;
     },
@@ -144,15 +273,11 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   logger.info(`API Gateway is running on port ${PORT}`);
-  logger.info(
-    `Identify service is running on ${process.env.IDENTIFY_SERVICE_URL}`
-  );
-  logger.info(`Job service is running on ${process.env.JOB_SERVICE_URL}`);
-  logger.info(
-    `Search service is running on port ${process.env.SEARCH_SERVICE_URL}`
-  );
-  logger.info(
-    `Notification service is running on ${process.env.NOTIFICATION_SERVICE_URL}`
-  );
   logger.info(`Redis URL: ${process.env.REDIS_URL}`);
+  logger.info(`RabbitMQ URL: ${process.env.RABBITMQ_URL}`);
+  logger.info(`Identify service is running on ${process.env.IDENTIFY_SERVICE_URL}`);
+  logger.info(`Job service is running on ${process.env.JOB_SERVICE_URL}`);
+  logger.info(`Search service is running on port ${process.env.SEARCH_SERVICE_URL}`);
+  logger.info(`Notification service is running on ${process.env.NOTIFICATION_SERVICE_URL}`);
+  logger.info(`Company service is running on ${process.env.COMPANY_SERVICE_URL}`);
 });

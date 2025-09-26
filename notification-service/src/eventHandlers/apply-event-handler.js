@@ -1,4 +1,5 @@
 import Notification from "../models/Notification.js";
+import NotificationService from "../service/NotificationService.js";
 import logger from "../utils/logger.js";
 
 async function handleJobApplicationEvent(event) {
@@ -18,4 +19,21 @@ async function handleJobApplicationEvent(event) {
   }
 }
 
-export { handleJobApplicationEvent };
+async function handleUpdateApplicationStatusEvent(event) {
+  try {
+    await NotificationService.createAndSendNotification({
+      userId: event.userId,
+      title: "Bạn có một thông báo mới",
+      message: event.message || "Trạng thái ứng tuyển của bạn đã được cập nhật",
+      type: event.type,
+      priority: event.priority,
+      metadata: event.metadata,
+      actions: event.actions,
+    });
+    logger.info(`Notification sent for applicant: ${event.title}`);
+  } catch (error) {
+    console.error("Error saving notification:", error);
+  }
+}
+
+export { handleJobApplicationEvent, handleUpdateApplicationStatusEvent };

@@ -4,10 +4,17 @@ import Redis from "ioredis";
 import cors from "cors";
 import helmet from "helmet";
 import connectDB from "./utils/connectDB.js";
-import { handleJobApplicationEvent } from "./eventHandlers/apply-event-handler.js";
 import logger from "./utils/logger.js";
 import { connectToRabbitMQ, consumeEvent } from "./utils/rabbitmq.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import { handleJobApplicationEvent, handleUpdateApplicationStatusEvent } from "./eventHandlers/apply-event-handler.js";
+import { handleJobSavedEvent } from "./eventHandlers/job-saved-handler.js";
+import {
+  handleAdminCompanyInvitedUserEvent,
+  handleCompanySubscriptionUpdatedEvent,
+  handleCompanyVerifiedEvent,
+} from "./eventHandlers/company-handler.js";
+import { handlePublishJobEvent } from "./eventHandlers/job-handler.js";
 
 dotenv.config();
 
@@ -24,7 +31,7 @@ app.use(helmet());
 
 app.use((req, res, next) => {
   logger.info(`Received ${req.method} request to ${req.url}`);
-  logger.info(`Request body, ${req.body}`);
+  logger.info(`Request body: ${JSON.stringify(req.body)}`);
   next();
 });
 
@@ -39,11 +46,20 @@ app.get("/", (req, res) => {
   res.send("Notification service is running");
 });
 
-async function startServer(req, res) {
+async function startServer() {
   try {
     await connectToRabbitMQ();
 
+    //jobs events
     await consumeEvent("job.application", handleJobApplicationEvent);
+    // await consumeEvent("job.save", handleJobSavedEvent);
+    await consumeEvent("job.published", handlePublishJobEvent);
+    await consumeEvent("application.status.updated", handleUpdateApplicationStatusEvent);
+
+    //company events
+    await consumeEvent("company.verified", handleCompanyVerifiedEvent, "companies");
+    await consumeEvent("company.subscription.updated", handleCompanySubscriptionUpdatedEvent, "companies");
+    await consumeEvent("identify.user.invited", handleAdminCompanyInvitedUserEvent, "companies");
 
     app.listen(PORT, () => {
       logger.info(`Notification service is running on port ${PORT}`);

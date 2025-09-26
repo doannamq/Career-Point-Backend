@@ -10,6 +10,8 @@ import { connectToRabbitMQ, consumeEvent } from "./utils/rabbitmq.js";
 import {
   handleJobCreated,
   handleJobDeleted,
+  handleUpdateJobFeatured,
+  handleUpdateJobHot,
 } from "./eventHandlers/search-event-handler.js";
 
 dotenv.config();
@@ -46,8 +48,10 @@ async function startServer() {
   try {
     await connectToRabbitMQ();
 
-    await consumeEvent("job.created", handleJobCreated);
+    await consumeEvent("job.published", handleJobCreated);
     await consumeEvent("job.deleted", handleJobDeleted);
+    await consumeEvent("job.featured", handleUpdateJobFeatured);
+    await consumeEvent("job.hot", handleUpdateJobHot);
 
     app.listen(PORT, () => {
       logger.info(`Search service is running on port ${PORT}`);

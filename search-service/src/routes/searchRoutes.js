@@ -1,10 +1,10 @@
 import express from "express";
 import { searchJobController } from "../controllers/search-controller.js";
-import authenticateRequest from "../middleware/authMiddleware.js";
+//import authenticateRequest from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.use(authenticateRequest);
+//router.use(authenticateRequest);
 
 router.get("/jobs", searchJobController);
 

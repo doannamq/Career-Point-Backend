@@ -10,6 +10,13 @@ import { rateLimit } from "express-rate-limit";
 import RedisStore from "rate-limit-redis";
 import routes from "./routes/identify-service.js";
 import errorHandler from "./middleware/errorHandler.js";
+import userRoutes from "./routes/user.js";
+import { connectToRabbitMQ, consumeEvent } from "./utils/rabbitmq.js";
+import {
+  handleCompanyMemberAccepted,
+  handleCompanyMemberInvited,
+  handleUpdateProfile,
+} from "./eventHandler/company-event-handler.js";
 
 dotenv.config();
 
@@ -57,7 +64,7 @@ app.use((req, res, next) => {
 //IP based rate limiting for sensitive endpoint
 const sensitiveEndpointsLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 50,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
@@ -74,13 +81,29 @@ app.use("/api/auth/register", sensitiveEndpointsLimiter);
 
 //Routes
 app.use("/api/auth", routes);
+app.use("/api/user", userRoutes);
 
 //error handlers
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  logger.info(`Identify service running on port ${PORT}`);
-});
+async function startServer() {
+  try {
+    await connectToRabbitMQ();
+
+    await consumeEvent("company.created", handleUpdateProfile);
+    await consumeEvent("companies.member.accepted", handleCompanyMemberAccepted);
+    await consumeEvent("companies.member.invited", handleCompanyMemberInvited);
+
+    app.listen(PORT, () => {
+      logger.info(`Identify service running on port ${PORT}`);
+    });
+  } catch (error) {
+    logger.error("Error starting server", error);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 //unhandled promise rejection
 process.on("unhandledRejection", (reason, promise) => {

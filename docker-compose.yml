@@ -13,6 +13,8 @@ services:
         condition: service_started
       job-service:
         condition: service_started
+      company-service:
+        condition: service_started
       search-service:
         condition: service_started
       notification-service:
@@ -23,11 +25,14 @@ services:
         condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379
-      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - IDENTIFY_SERVICE_URL=http://identify-service:3001
       - JOB_SERVICE_URL=http://job-service:3002
       - SEARCH_SERVICE_URL=http://search-service:3003
       - NOTIFICATION_SERVICE_URL=http://notification-service:3004
+      - COMPANY_SERVICE_URL=http://company-service:3005
+    networks:
+      - app-network
 
   identify-service:
     build:
@@ -39,11 +44,15 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      company-service:
+        condition: service_started
     environment:
       - REDIS_URL=redis://redis:6379
-      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
     ports:
       - "3001:3001"
+    networks:
+      - app-network
 
   job-service:
     build:
@@ -57,9 +66,29 @@ services:
         condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379
-      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
     ports:
       - "3002:3002"
+    networks:
+      - app-network
+
+  company-service:
+    build:
+      context: ./company-service
+      dockerfile: Dockerfile
+    env_file: ./company-service/.env
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+    ports:
+      - "3005:3005"
+    networks:
+      - app-network
 
   search-service:
     build:
@@ -71,11 +100,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      job-service:
+        condition: service_started
     environment:
       - REDIS_URL=redis://redis:6379
-      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
     ports:
       - "3003:3003"
+    networks:
+      - app-network
 
   notification-service:
     build:
@@ -87,11 +120,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      job-service:
+        condition: service_started
     environment:
       - REDIS_URL=redis://redis:6379
-      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
     ports:
       - "3004:3004"
+    networks:
+      - app-network
 
   redis:
     image: redis:alpine
@@ -102,14 +139,32 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - app-network
 
   rabbitmq:
     image: rabbitmq:3-management
     ports:
       - "5672:5672"
       - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_LOOPBACK_USERS: "none"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
+      interval: 30s
+      timeout: 10s
       retries: 5
+      start_period: 60s
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  rabbitmq_data:

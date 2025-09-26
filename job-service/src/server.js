@@ -4,10 +4,13 @@ import mongoose from "mongoose";
 import Redis from "ioredis";
 import cors from "cors";
 import helmet from "helmet";
-import jobRoutes from "./routes/postRoutes.js";
+import jobRoutes from "./routes/jobRoutes.js";
 import logger from "./utils/logger.js";
-import { connectRabbitMQ } from "./utils/rabbitmq.js";
-
+import { connectRabbitMQ, consumeEvent } from "./utils/rabbitmq.js";
+import applicationRoutes from "./routes/applicationRoutes.js";
+import savedJobRoutes from "./routes/savedJobRoutes.js";
+import { handleCompanyCreated, handleCompanySubscriptionUpdated } from "./eventHandler/eventHandler.js";
+import { startTrendingJobsScheduler } from "./controllers/jobController.js";
 dotenv.config();
 
 const app = express();
@@ -40,11 +43,23 @@ app.use(
   jobRoutes
 );
 
+app.use("/api/applications", applicationRoutes);
+
+app.use("/api/saved-jobs", savedJobRoutes);
+
 async function startServer() {
   try {
     await connectRabbitMQ();
+
+    await consumeEvent("company.created", (data) => handleCompanyCreated(data, redisClient));
+    await consumeEvent("company.subscription.updated", (data) => handleCompanySubscriptionUpdated(data, redisClient));
+
     app.listen(PORT, () => {
       logger.info(`Job service running on port ${PORT}`);
+      // console.log("redis client: ", redisClient);
+
+      startTrendingJobsScheduler();
+      logger.info("Trending jobs scheduler started");
     });
   } catch (error) {
     console.log(error.message);

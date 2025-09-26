@@ -1,16 +1,20 @@
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import RefreshToken from "../models/RefreshToken.js";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const generateTokens = async (user) => {
   const accessToken = jwt.sign(
     {
       userId: user._id,
-      username: user.username,
+      userName: user.name,
+      userEmail: user.email,
       userRole: user.role,
     },
     process.env.JWT_SECRET,
-    { expiresIn: "60m" }
+    { expiresIn: "7d" }
   );
 
   const refreshToken = crypto.randomBytes(40).toString("hex");

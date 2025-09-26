@@ -1,5 +1,8 @@
 import logger from "../utils/logger.js";
 import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const authenticateRequest = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];

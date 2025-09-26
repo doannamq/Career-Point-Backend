@@ -1,0 +1,23 @@
+import logger from "../utils/logger.js";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const authenticateRequest = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+
+  if (!token) {
+    logger.warn("Missing token in request headers");
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized",
+    });
+  }
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  console.log("decoded", decoded);
+  req.user = decoded;
+  next();
+};
+
+export default authenticateRequest;
